@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Emotion Detection App</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <h2>Emotion Detection Web App</h2>
+  
+  <div class="container">
+    <input type="text" id="userName" placeholder="Enter your name" required><br><br>
+    
+    <div class="tabs">
+      <button class="tab-button active" onclick="showTab('upload')">Upload Image</button>
+      <button class="tab-button" onclick="showTab('webcam')">Use Webcam</button>
+    </div>
+
+    <!-- Upload Image Tab -->
+    <div id="upload-tab" class="tab-content active">
+      <form action="/predict" method="POST" enctype="multipart/form-data">
+        <input type="hidden" name="name" id="uploadName">
+        <input type="file" name="image" accept="image/*" required><br><br>
+        <button type="submit" onclick="setName('uploadName')">Detect Emotion</button>
+      </form>
+    </div>
+
+    <!-- Webcam Tab -->
+    <div id="webcam-tab" class="tab-content">
+      <video id="video" autoplay></video><br>
+      <canvas id="canvas" style="display:none;"></canvas><br>
+      <button id="startCamera" onclick="startCamera()">Start Camera</button>
+      <button id="capture" onclick="captureImage()" style="display:none;">Capture Photo</button>
+      <button id="retake" onclick="retakePhoto()" style="display:none;">Retake</button>
+      <button id="submitWebcam" onclick="submitWebcam()" style="display:none;">Detect Emotion</button>
+      <div id="preview" style="display:none;">
+        <p>Preview:</p>
+        <img id="capturedImage" width="200">
+      </div>
+    </div>
+  </div>
+
+  {% if emotion %}
+  <div class="result">
+    <h3>Hi {{ name }}, detected emotion: <b>{{ emotion }}</b></h3>
+    <img src="{{ image }}" width="200" alt="Uploaded Image">
+  </div>
+  {% endif %}
+
+  <script>
+    let stream = null;
+    let capturedImageData = null;
+
+    function showTab(tabName) {
+      // Hide all tabs
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+      });
+      document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.classList.remove('active');
+      });
+
+      // Show selected tab
+      if (tabName === 'upload') {
+        document.getElementById('upload-tab').classList.add('active');
+        document.querySelectorAll('.tab-button')[0].classList.add('active');
+        stopCamera();
+      } else {
+        document.getElementById('webcam-tab').classList.add('active');
+        document.querySelectorAll('.tab-button')[1].classList.add('active');
+      }
+    }
+
+    function setName(fieldId) {
+      const name = document.getElementById('userName').value;
+      document.getElementById(fieldId).value = name;
+    }
+
+    async function startCamera() {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const video = document.getElementById('video');
+        video.srcObject = stream;
+        document.getElementById('startCamera').style.display = 'none';
+        document.getElementById('capture').style.display = 'inline-block';
+      } catch (err) {
+        alert('Error accessing camera: ' + err.message);
+      }
+    }
+
+    function stopCamera() {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+        stream = null;
+      }
+    }
+
+    function captureImage() {
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const context = canvas.getContext('2d');
+      
+      // Set canvas to a reasonable size (max 640x480) to reduce file size
+      const maxWidth = 640;
+      const maxHeight = 480;
+      let width = video.videoWidth;
+      let height = video.videoHeight;
+      
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width;
+        width = maxWidth;
+      }
+      if (height > maxHeight) {
+        width = (width * maxHeight) / height;
+        height = maxHeight;
+      }
+      
+      canvas.width = width;
+      canvas.height = height;
+      context.drawImage(video, 0, 0, width, height);
+      
+      // Use JPEG with quality 0.7 to reduce file size significantly
+      capturedImageData = canvas.toDataURL('image/jpeg', 0.7);
+      document.getElementById('capturedImage').src = capturedImageData;
+      
+      // Hide video and capture button, show preview and action buttons
+      video.style.display = 'none';
+      document.getElementById('capture').style.display = 'none';
+      document.getElementById('preview').style.display = 'block';
+      document.getElementById('retake').style.display = 'inline-block';
+      document.getElementById('submitWebcam').style.display = 'inline-block';
+      
+      stopCamera();
+    }
+
+    function retakePhoto() {
+      const video = document.getElementById('video');
+      video.style.display = 'block';
+      document.getElementById('preview').style.display = 'none';
+      document.getElementById('retake').style.display = 'none';
+      document.getElementById('submitWebcam').style.display = 'none';
+      capturedImageData = null;
+      startCamera();
+    }
+
+    async function submitWebcam() {
+      const name = document.getElementById('userName').value;
+      if (!name) {
+        alert('Please enter your name');
+        return;
+      }
+      if (!capturedImageData) {
+        alert('Please capture an image first');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('image_data', capturedImageData);
+
+      try {
+        const response = await fetch('/predict_webcam', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (response.ok) {
+          // Get the HTML response and replace the entire page
+          const html = await response.text();
+          document.open();
+          document.write(html);
+          document.close();
+        } else {
+          alert('Error processing image: ' + response.status);
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    // Cleanup on page unload
+    window.addEventListener('beforeunload', stopCamera);
+  </script>
+</body>
+</html>
