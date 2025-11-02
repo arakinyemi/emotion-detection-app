@@ -119,5 +119,8 @@ def predict_webcam():
     except Exception as e:
         return f"Error processing image: {str(e)}", 500
 
-if __name__ == '__main__':
-    app.run(debug=True)
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
